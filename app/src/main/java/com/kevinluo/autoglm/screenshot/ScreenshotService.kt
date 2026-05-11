@@ -19,7 +19,7 @@ import java.io.ByteArrayOutputStream
  * Contains the base64-encoded image data along with metadata about the capture.
  * The image is typically in WebP format for optimal compression.
  *
- * @property base64Data Base64-encoded image data (typically WebP format)
+ * @property base64Data Base64-encoded image data (JPEG format)
  * @property width Width of the screenshot in pixels (after scaling)
  * @property height Height of the screenshot in pixels (after scaling)
  * @property originalWidth Original screen width in pixels (before scaling)
@@ -90,12 +90,9 @@ class ScreenshotService(
         private const val FALLBACK_HEIGHT = 1920
 
         // Screenshot compression settings - optimized for API upload
-        private const val WEBP_QUALITY = 65 // Reduced from 70 for better compression
+        // Use JPEG instead of WebP: llama.cpp's stb_image decoder does not support WebP
+        private const val JPEG_QUALITY = 80
 
-        /**
-         * Returns the appropriate WebP compress format based on API level.
-         * WEBP_LOSSY is only available on API 30+, use deprecated WEBP for older versions.
-         */
         @Suppress("DEPRECATION")
         val WEBP_FORMAT: Bitmap.CompressFormat
             get() =
@@ -202,14 +199,14 @@ class ScreenshotService(
                 Logger.d(TAG, "Scaled from ${originalWidth}x$originalHeight to ${scaledWidth}x$scaledHeight")
             }
 
-            // Convert to WebP for better compression
+            // Convert to JPEG for API compatibility (llama.cpp stb_image does not support WebP)
             val webpStream = ByteArrayOutputStream()
-            bitmap.compress(WEBP_FORMAT, WEBP_QUALITY, webpStream)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, webpStream)
             bitmap.recycle()
 
             val webpData = webpStream.toByteArray()
             val compressionRatio = if (pngData.isNotEmpty()) 100 * webpData.size / pngData.size else 0
-            Logger.d(TAG, "Converted to WebP: ${webpData.size} bytes ($compressionRatio% of PNG)")
+            Logger.d(TAG, "Converted to JPEG: ${webpData.size} bytes ($compressionRatio% of PNG)")
 
             val base64Data = encodeToBase64(webpData)
             Logger.d(TAG, "Screenshot captured: ${scaledWidth}x$scaledHeight, base64 length: ${base64Data.length}")
@@ -390,7 +387,7 @@ class ScreenshotService(
         val bitmap = Bitmap.createBitmap(FALLBACK_WIDTH, FALLBACK_HEIGHT, Bitmap.Config.ARGB_8888)
 
         val outputStream = ByteArrayOutputStream()
-        bitmap.compress(WEBP_FORMAT, WEBP_QUALITY, outputStream)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
         bitmap.recycle()
 
         val base64Data = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
@@ -440,14 +437,14 @@ class ScreenshotService(
      *
      * @param bitmap Bitmap to encode
      * @param format Compression format (default: WEBP_LOSSY)
-     * @param quality Compression quality 0-100 (default: WEBP_QUALITY)
+     * @param quality Compression quality 0-100 (default: JPEG_QUALITY)
      * @return Base64-encoded string of the compressed image
      *
      */
     fun encodeBitmapToBase64(
         bitmap: Bitmap,
         format: Bitmap.CompressFormat = WEBP_FORMAT,
-        quality: Int = WEBP_QUALITY,
+        quality: Int = JPEG_QUALITY,
     ): String {
         val outputStream = ByteArrayOutputStream()
         bitmap.compress(format, quality, outputStream)
